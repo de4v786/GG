@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar"
 import { format, addDays, differenceInDays } from "date-fns"
 import {
-  Calendar,
+  Calendar as CalendarIconLucide,
   Clock,
   MapPin,
   Fuel,
