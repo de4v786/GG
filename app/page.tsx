@@ -8,6 +8,9 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { format, addDays, differenceInDays } from "date-fns"
 import {
   Calendar,
   Clock,
@@ -27,6 +30,8 @@ import {
   Download,
   RefreshCw,
   Utensils,
+  CalendarIcon,
+  Settings,
 } from "lucide-react"
 
 interface InstallationTask {
@@ -40,6 +45,7 @@ interface InstallationTask {
   status: "completed" | "in-progress" | "pending" | "travel" | "lunch"
   team?: string
   equipment?: string
+  actualDate?: Date
 }
 
 interface TaskModalProps {
@@ -550,6 +556,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, isOpen, onClose }) => {
             </DialogTitle>
             <Badge variant="outline" className="text-xs px-2 py-1">
               Day {task.day}
+              {task.actualDate && (
+                <span className="ml-2 text-muted-foreground">
+                  {format(task.actualDate, "MMM dd")}
+                </span>
+              )}
             </Badge>
           </div>
         </DialogHeader>
@@ -562,6 +573,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, isOpen, onClose }) => {
                 <div className="flex items-center gap-2 text-sm">
                   <Calendar className="h-4 w-4 text-blue-600" />
                   <span>Day {task.day}</span>
+                  {task.actualDate && (
+                    <span className="text-muted-foreground">
+                      ({format(task.actualDate, "MMM dd, yyyy")})
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 text-sm mt-1">
                   <Clock className="h-4 w-4 text-blue-600" />
@@ -678,11 +694,20 @@ export default function InstallationSchedule() {
   const [hoveredDay, setHoveredDay] = useState<number | null>(null)
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set())
   const [showTaskDetails, setShowTaskDetails] = useState<boolean>(false)
+  const [scheduleStartDate, setScheduleStartDate] = useState<Date>(new Date())
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState<boolean>(false)
 
   const locations = ["all", "Bahir Dar", "Kombolcha", "Addis Ababa", "Travel"] as const
 
+  // Calculate actual dates for tasks based on schedule start date
+  const tasksWithDates = useMemo(() => {
+    return INSTALLATION_DATA.map(task => ({
+      ...task,
+      actualDate: addDays(scheduleStartDate, task.day - 1)
+    }))
+  }, [scheduleStartDate])
   const filteredData = useMemo(() => {
-    return INSTALLATION_DATA.filter((task) => {
+    return tasksWithDates.filter((task) => {
       const matchesLocation = selectedLocation === "all" || task.location === selectedLocation
       const matchesSearch =
         searchQuery === "" ||
@@ -690,7 +715,7 @@ export default function InstallationSchedule() {
         (task.vehicleNo && task.vehicleNo.toString().includes(searchQuery))
       return matchesLocation && matchesSearch
     })
-  }, [selectedLocation, searchQuery])
+  }, [selectedLocation, searchQuery, tasksWithDates])
 
   const weekDays = useMemo(() => {
     const startDay = currentWeek * 7 + 1
@@ -699,6 +724,12 @@ export default function InstallationSchedule() {
 
   const totalWeeks = Math.ceil(14 / 7)
 
+  const handleDateSelect = useCallback((date: Date | undefined) => {
+    if (date) {
+      setScheduleStartDate(date)
+      setIsDatePickerOpen(false)
+    }
+  }, [])
   const handleTaskClick = useCallback((task: InstallationTask, event: React.MouseEvent) => {
     event.stopPropagation()
     if (event.ctrlKey || event.metaKey) {
@@ -756,12 +787,12 @@ export default function InstallationSchedule() {
   }, [showTaskDetails])
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex transition-all duration-300">
+      <div className="w-80 bg-white/95 backdrop-blur-sm border-r border-gray-200/50 flex flex-col shadow-lg">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-6 border-b border-gray-200/50 bg-gradient-to-r from-blue-50 to-indigo-50">
           <div className="flex items-center gap-3 mb-4">
-            <div className="h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center">
+            <div className="h-10 w-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shadow-md">
               <Calendar className="h-6 w-6 text-white" />
             </div>
             <div>
@@ -776,21 +807,53 @@ export default function InstallationSchedule() {
               placeholder="Search vehicles..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
               aria-label="Search vehicles"
             />
           </div>
         </div>
 
+        {/* Schedule Start Date Picker */}
+        <div className="p-4 border-b border-gray-200/50 bg-gradient-to-r from-green-50 to-emerald-50">
+          <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+            <Settings className="h-4 w-4 text-green-600" />
+            Schedule Configuration
+          </h3>
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-gray-700">Start Date</label>
+            <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start text-left font-normal transition-all duration-200 hover:bg-green-50 hover:border-green-300"
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4 text-green-600" />
+                  {format(scheduleStartDate, "PPP")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={scheduleStartDate}
+                  onSelect={handleDateSelect}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            <p className="text-xs text-gray-500">
+              Schedule will run for 14 days starting from selected date
+            </p>
+          </div>
+        </div>
         {/* Mini Calendar */}
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-gray-200/50">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-medium text-gray-900">March 2024</h3>
+            <h3 className="font-medium text-gray-900">{format(scheduleStartDate, "MMMM yyyy")}</h3>
             <div className="flex gap-1">
-              <Button variant="ghost" size="sm" aria-label="Previous month">
+              <Button variant="ghost" size="sm" aria-label="Previous month" className="hover:bg-blue-50 transition-colors">
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" aria-label="Next month">
+              <Button variant="ghost" size="sm" aria-label="Next month" className="hover:bg-blue-50 transition-colors">
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -802,22 +865,30 @@ export default function InstallationSchedule() {
                 {day}
               </div>
             ))}
-            {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+            {Array.from({ length: new Date(scheduleStartDate.getFullYear(), scheduleStartDate.getMonth() + 1, 0).getDate() }, (_, i) => i + 1).map((day) => {
+              const currentDate = new Date(scheduleStartDate.getFullYear(), scheduleStartDate.getMonth(), day)
+              const daysDiff = differenceInDays(currentDate, scheduleStartDate)
+              const isScheduleDay = daysDiff >= 0 && daysDiff < 14
+              
+              return (
               <button
                 key={day}
-                className={`p-1 text-center rounded hover:bg-gray-100 transition-colors ${
-                  day <= 14 ? "text-blue-600 font-medium" : "text-gray-400"
+                className={`p-1 text-center rounded transition-all duration-200 ${
+                  isScheduleDay 
+                    ? "text-blue-600 font-medium bg-blue-50 hover:bg-blue-100" 
+                    : "text-gray-400 hover:bg-gray-100"
                 }`}
                 aria-label={`Day ${day}`}
               >
                 {day}
               </button>
-            ))}
+              )
+            })}
           </div>
         </div>
 
         {/* Schedule Filters */}
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-gray-200/50">
           <h3 className="font-medium text-gray-900 mb-3">My Schedule</h3>
           <div className="space-y-2">
             {[
@@ -827,12 +898,12 @@ export default function InstallationSchedule() {
               { name: "Travel Days", count: 1, color: "bg-purple-500" },
               { name: "Completed", count: 4, color: "bg-gray-500" },
             ].map((item) => (
-              <div key={item.name} className="flex items-center justify-between">
+              <div key={item.name} className="flex items-center justify-between hover:bg-gray-50 p-2 rounded-md transition-colors">
                 <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${item.color}`} />
+                  <div className={`w-3 h-3 rounded-full ${item.color} shadow-sm`} />
                   <span className="text-sm text-gray-700">{item.name}</span>
                 </div>
-                <span className="text-xs text-gray-500">{item.count}</span>
+                <span className="text-xs text-gray-500 font-medium">{item.count}</span>
               </div>
             ))}
           </div>
@@ -848,8 +919,8 @@ export default function InstallationSchedule() {
                 onClick={() => setSelectedLocation(location)}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
                   selectedLocation === location
-                    ? "bg-blue-100 text-blue-700 font-medium"
-                    : "text-gray-600 hover:bg-gray-100"
+                    ? "bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 font-medium shadow-sm"
+                    : "text-gray-600 hover:bg-gray-100 hover:shadow-sm"
                 }`}
                 aria-pressed={selectedLocation === location}
               >
@@ -872,23 +943,27 @@ export default function InstallationSchedule() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        <div className="bg-white border-b border-gray-200 p-6">
+        <div className="bg-white/95 backdrop-blur-sm border-b border-gray-200/50 p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Installation Calendar</h2>
               <p className="text-gray-500 mt-1">
                 {filteredData.length} total entries • {filteredData.filter((t) => t.status === "completed").length}{" "}
                 completed • {filteredData.filter((t) => t.status === "lunch").length} lunch breaks
+                <span className="ml-2 text-blue-600 font-medium">
+                  Starting {format(scheduleStartDate, "MMM dd, yyyy")}
+                </span>
               </p>
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 shadow-sm">
                 <Button
                   variant={viewMode === "calendar" ? "default" : "ghost"}
                   size="sm"
                   onClick={() => setViewMode("calendar")}
                   aria-pressed={viewMode === "calendar"}
+                  className="transition-all duration-200"
                 >
                   <CalendarDays className="h-4 w-4" />
                   Calendar
@@ -898,19 +973,20 @@ export default function InstallationSchedule() {
                   size="sm"
                   onClick={() => setViewMode("grid")}
                   aria-pressed={viewMode === "grid"}
+                  className="transition-all duration-200"
                 >
                   <Grid3X3 className="h-4 w-4" />
                   Grid
                 </Button>
               </div>
 
-              <Button variant="outline" size="sm" aria-label="Refresh data">
+              <Button variant="outline" size="sm" aria-label="Refresh data" className="hover:bg-blue-50 transition-colors">
                 <RefreshCw className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="sm" aria-label="Download schedule">
+              <Button variant="outline" size="sm" aria-label="Download schedule" className="hover:bg-green-50 transition-colors">
                 <Download className="h-4 w-4" />
               </Button>
-              <Button size="sm" aria-label="Add new installation">
+              <Button size="sm" aria-label="Add new installation" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-md">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Installation
               </Button>
@@ -921,9 +997,9 @@ export default function InstallationSchedule() {
         {/* Content Area */}
         <div className="flex-1 p-6">
           {viewMode === "calendar" ? (
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="bg-white/95 backdrop-blur-sm rounded-xl border border-gray-200/50 overflow-hidden shadow-lg">
               {/* Calendar Header */}
-              <div className="border-b border-gray-200 p-4">
+              <div className="border-b border-gray-200/50 p-4 bg-gradient-to-r from-gray-50 to-gray-100">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">
                     Week {currentWeek + 1} of {totalWeeks}
@@ -935,6 +1011,7 @@ export default function InstallationSchedule() {
                       onClick={() => setCurrentWeek(Math.max(0, currentWeek - 1))}
                       disabled={currentWeek === 0}
                       aria-label="Previous week"
+                      className="transition-all duration-200 hover:bg-blue-50 disabled:opacity-50"
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
@@ -944,6 +1021,7 @@ export default function InstallationSchedule() {
                       onClick={() => setCurrentWeek(Math.min(totalWeeks - 1, currentWeek + 1))}
                       disabled={currentWeek === totalWeeks - 1}
                       aria-label="Next week"
+                      className="transition-all duration-200 hover:bg-blue-50 disabled:opacity-50"
                     >
                       <ChevronRight className="h-4 w-4" />
                     </Button>
@@ -952,16 +1030,16 @@ export default function InstallationSchedule() {
               </div>
 
               {/* Calendar Grid */}
-              <div className="grid grid-cols-8 min-h-[600px]">
+              <div className="grid grid-cols-8 min-h-[600px] bg-gradient-to-br from-white to-gray-50">
                 {/* Time Column */}
-                <div className="border-r border-gray-200 bg-gray-50">
-                  <div className="h-12 border-b border-gray-200 flex items-center justify-center text-sm font-medium text-gray-500">
+                <div className="border-r border-gray-200/50 bg-gradient-to-b from-gray-50 to-gray-100">
+                  <div className="h-12 border-b border-gray-200/50 flex items-center justify-center text-sm font-medium text-gray-500">
                     Time
                   </div>
                   {["8:30 AM", "11:30 AM", "1:30 PM"].map((time) => (
                     <div
                       key={time}
-                      className="h-24 border-b border-gray-100 flex items-center justify-center text-xs text-gray-500"
+                      className="h-24 border-b border-gray-100/50 flex items-center justify-center text-xs text-gray-500 font-medium"
                     >
                       {time}
                     </div>
@@ -971,21 +1049,22 @@ export default function InstallationSchedule() {
                 {/* Day Columns */}
                 {weekDays.map((dayNum, dayIndex) => {
                   const dayTasks = filteredData.filter((task) => task.day === dayNum)
+                  const dayDate = addDays(scheduleStartDate, dayNum - 1)
 
                   return (
-                    <div key={dayNum} className="border-r border-gray-200 relative">
+                    <div key={dayNum} className="border-r border-gray-200/50 relative hover:bg-blue-50/30 transition-colors">
                       {/* Day Header */}
-                      <div className="h-12 border-b border-gray-200 flex items-center justify-center bg-gray-50">
+                      <div className="h-12 border-b border-gray-200/50 flex items-center justify-center bg-gradient-to-b from-blue-50 to-indigo-50">
                         <div className="text-center">
                           <div className="text-sm font-medium text-gray-900">Day {dayNum}</div>
-                          <div className="text-xs text-gray-500">Mar {dayNum}</div>
+                          <div className="text-xs text-gray-500">{format(dayDate, "MMM dd")}</div>
                         </div>
                       </div>
 
                       {/* Time Slots */}
                       <div className="relative">
                         {Array.from({ length: 3 }).map((_, timeIndex) => (
-                          <div key={timeIndex} className="h-24 border-b border-gray-100" />
+                          <div key={timeIndex} className="h-24 border-b border-gray-100/50" />
                         ))}
 
                         {/* Tasks */}
@@ -996,11 +1075,11 @@ export default function InstallationSchedule() {
                             const isExpanded = expandedTask === task.vehicleNo
 
                             const colors = {
-                              completed: "bg-green-100 border-green-300 text-green-800 hover:bg-green-200",
-                              "in-progress": "bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200",
-                              pending: "bg-blue-100 border-blue-300 text-blue-800 hover:bg-blue-200",
-                              travel: "bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200",
-                              lunch: "bg-orange-100 border-orange-300 text-orange-800 hover:bg-orange-200",
+                              completed: "bg-gradient-to-r from-green-100 to-emerald-100 border-green-300 text-green-800 hover:from-green-200 hover:to-emerald-200 shadow-sm",
+                              "in-progress": "bg-gradient-to-r from-yellow-100 to-amber-100 border-yellow-300 text-yellow-800 hover:from-yellow-200 hover:to-amber-200 shadow-sm",
+                              pending: "bg-gradient-to-r from-blue-100 to-indigo-100 border-blue-300 text-blue-800 hover:from-blue-200 hover:to-indigo-200 shadow-sm",
+                              travel: "bg-gradient-to-r from-purple-100 to-violet-100 border-purple-300 text-purple-800 hover:from-purple-200 hover:to-violet-200 shadow-sm",
+                              lunch: "bg-gradient-to-r from-orange-100 to-red-100 border-orange-300 text-orange-800 hover:from-orange-200 hover:to-red-200 shadow-sm",
                             }
 
                             return (
@@ -1008,9 +1087,9 @@ export default function InstallationSchedule() {
                                 key={taskIndex}
                                 draggable={task.vehicleNo !== null}
                                 onDragStart={(e) => handleDragStart(task, e)}
-                                className={`p-1.5 rounded-lg border cursor-pointer transition-all duration-200 group ${
+                                className={`p-1.5 rounded-lg border cursor-pointer transition-all duration-300 group ${
                                   colors[task.status]
-                                } ${isSelected ? "ring-2 ring-blue-500 scale-105" : "hover:shadow-lg hover:scale-105"} ${
+                                } ${isSelected ? "ring-2 ring-blue-500 scale-105 shadow-lg" : "hover:shadow-lg hover:scale-105"} ${
                                   isExpanded ? "z-10 scale-110 shadow-xl" : ""
                                 }`}
                                 onClick={(e) => handleTaskClick(task, e)}
@@ -1042,7 +1121,7 @@ export default function InstallationSchedule() {
                                       <Fuel className="h-3 w-3" />
                                       <span>{task.fuelTanks}</span>
                                       <div className="ml-auto">
-                                        <Progress value={task.progress} className="h-1 w-6" />
+                                        <Progress value={task.progress} className="h-1 w-6 bg-white/50" />
                                       </div>
                                     </div>
                                   </>
@@ -1063,16 +1142,20 @@ export default function InstallationSchedule() {
             </div>
           ) : (
             /* Grid View */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in fade-in duration-500">
               {Array.from({ length: 14 }, (_, i) => i + 1).map((day) => {
                 const tasks = filteredData.filter((task) => task.day === day)
                 if (tasks.length === 0) return null
+                const dayDate = addDays(scheduleStartDate, day - 1)
 
                 return (
-                  <Card key={day} className="hover:shadow-lg transition-shadow">
+                  <Card key={day} className="hover:shadow-xl transition-all duration-300 hover:scale-105 bg-gradient-to-br from-white to-gray-50 border-gray-200/50">
                     <CardHeader className="pb-3">
                       <CardTitle className="flex items-center justify-between text-lg">
-                        <span>Day {day}</span>
+                        <div>
+                          <span>Day {day}</span>
+                          <div className="text-xs text-gray-500 font-normal">{format(dayDate, "MMM dd, yyyy")}</div>
+                        </div>
                         <Badge variant="outline">{tasks[0].location}</Badge>
                       </CardTitle>
                     </CardHeader>
@@ -1080,7 +1163,7 @@ export default function InstallationSchedule() {
                       {tasks.map((task, index) => (
                         <div
                           key={index}
-                          className="cursor-pointer rounded-lg border p-3 transition-all hover:shadow-md hover:border-primary/50 hover:scale-105"
+                          className="cursor-pointer rounded-lg border p-3 transition-all duration-300 hover:shadow-lg hover:border-primary/50 hover:scale-105 bg-gradient-to-r from-white to-gray-50"
                           onClick={(e) => handleTaskClick(task, e)}
                           role="button"
                           tabIndex={0}
@@ -1125,7 +1208,7 @@ export default function InstallationSchedule() {
                                       <span>Progress</span>
                                       <span>{task.progress}%</span>
                                     </div>
-                                    <Progress value={task.progress} className="h-2" />
+                                    <Progress value={task.progress} className="h-2 bg-gray-200" />
                                   </div>
                                 </>
                               )}
@@ -1133,7 +1216,7 @@ export default function InstallationSchedule() {
 
                             <Badge
                               variant="outline"
-                              className={`${getStatusColor(task.status)} text-white border-transparent`}
+                              className={`${getStatusColor(task.status)} text-white border-transparent shadow-sm`}
                             >
                               {task.status}
                             </Badge>
